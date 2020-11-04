@@ -1,0 +1,422 @@
+---
+title: "2020 SEM1 STATS 765 Project Milestone 4"
+author: "Ian Chen"
+date: "Due 12 June 2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, cache=TRUE}
+# Libraries
+library(readxl)
+```
+
+# Goal
+
+The objective of this project is to investigate the shifting of New Zealand electorate borders from census to census. This will allow for the prediction of the impact of electoral changes on the general election.
+
+# Data Source
+
+The New Zealand Government releases datasets for general public use (all licensed under Creative Commons Attribution 4.0 International) at \href{http://data.govt.nz}{\color{blue}{this site}} through Stats NZ. Electorate and meshblock data can all be found here, downloaded as .csv files.
+
+For the elections, the New Zealand Government also releases datasets publicly containing voting data broken down into candidate and party votes per electorate, as well as a summary dataset that covers every electorate as a whole. The 2017 general election results can be found at \href{https://www.electionresults.govt.nz/electionresults_2017/}{\color{blue}{this site}}, while the 2014 general election results can be found at \href{https://www.electionresults.govt.nz/electionresults_2014/}{\color{blue}{this site}}.
+
+# Data Processing
+
+## General Electorates and M&amacr;ori Electorates
+
+The years 2014 and 2020 are used, as the 2014 electorates are used for both the 2014 and 2017 general elections, and the 2020 electorates will be used for the 2020 general election.
+
+For the 2014 dataset, the WKT representation of each electorate is extremely long, thus being a resource hog, and is not needed, so that column has been removed (see \hyperref[sec:Appendix Section A]{\underline{Section A of the Appendix}} for more information. The electorates have been rearranged into alphabetical order.
+
+```{r 2020 electorates, cache=TRUE}
+# Loading the 2014 electorate datasets
+ge2014 <- read.csv("general-electoral-district-2014.csv")
+ge2014 <- ge2014[order(ge2014$GED2014_V1_00), -1]
+rownames(ge2014) <- ge2014$GED2014_V1_00
+maori2014 <- read.csv("maori-electoral-district-2014.csv")
+maori2014 <- maori2014[, -1]
+# Loading the 2020 electorate datasets
+ge2020 <- read.csv("general-electorates-2020-data.csv")
+colnames(ge2020)[1] <- "GED2020_V1_00"
+maori2020 <- read.csv("maori-electorates-2020-data.csv")
+colnames(maori2020)[1] <- "MED2020_V1_00"
+head(ge2014)[1:4]
+```
+
+Per the Electoral Act 1993, section 35(3)(a), the number of South Island general electorates remains static at 16. The North Island and M&amacr;ori general electorates adjust accordingly.
+
+On 23 September 2019, Stats NZ announced that a new North Island general electorate would be created in the Auckland region (Takanini). The report also states that the Takanini electorate was created as the Auckland region had experienced large population growth since the last census. No new M&amacr;ori electorates were introduced, making the final total number of electorates equal to 72. Many electorates saw changes since 2014; some in electorate borders, some in name. These changes are outlined in the executive summary of \href{https://vote.nz/assets/Boundary-Review/REPORT-OF-THE-REPRESENTATION-COMMISSION-2020.pdf}{\color{blue}{this report}}. The report mentions that with the shifting of the boundaries, 7% of the New Zealand population will be in a different electorate for the 2020 general election. See \hyperref[sec:Appendix Section B]{\underline{Section B of the Appendix}} for more information.
+
+The 2020 Bay of Plenty, Coromandel, Hamilton West, Kaipara ki Mahurangi (former Helensville) and Whangarei electorates appear to be significantly smaller than the 2014 variants. Meanwhile, the 2020 Ilam, Invercargill, Maungakiekie, New Lynn, Papakura, Rangitata, Selwyn, Waikato, Wigram and Tamaki Makaurau electorates appear to be significantly larger than the 2014 variants.
+
+It should be noted that, the last three censi (2008, 2013, 2018) showed enough population growth to necessitate one additional electorate for the two general elections in the years following them. In response to the 2008 census, Stats NZ introduced Botany into the list of electorates, and in response to the 2013 census, the Waitakere electorate was removed, and the Upper Harbour and Kelston electorates were formed.
+
+## Meshblock Data
+
+The meshblocks used for the electorates that were used for the 2014 general election and will be used for the 2020 general election are loaded in here.
+
+```{r classification of meshblocks, cache=TRUE}
+# Meshblocks for various years with miscellaneous information
+mbclass <- read.csv("geographic-areas-file-2020.csv")
+colnames(mbclass)[1] = "MB2020_code"
+
+# Meshblock labels over census and election years
+yearlymbs <- read_excel("MB-only_census-and-electorate-years.xlsx")
+# Meshblock labels 2014 election
+mbelecs2014 <- read_excel("MB-and-electorates.xlsx")
+colnames(mbelecs2014)[c(6, 7)] = c("2014_AREA_SQ_KM", "2014_LAND_AREA_SQ_KM")
+# Meshblocks 2020 with corresponding electorate allocation
+mbelecpop2020 <- read.csv("meshblock-electoral-populations-2020-data (2).csv")
+colnames(mbelecpop2020)[c(1, 10, 11)] = c("MB2020_V2_00", "2020_LAND_AREA_SQ_KM", 
+                                          "2020_AREA_SQ_KM")
+# Converting the meshblock numbers to strings with leading zeroes
+mbelecpop2020[, 1] = sprintf("%07d", mbelecpop2020[, 1])
+```
+
+The name of the column in \texttt{mbclass} has been renamed for clarity. Each of the meshblock datasets by year has had their area columns renamed to show the year for each one, so that they are distinct columns when they are joined together. For the 2020 meshblock dataset, both of the aforementioned changes were applied. In addition, the newly-renamed column \texttt{MB2020\_V2\_00} has had every value converted to a 7-digit value, adding leading zeroes.
+
+It should be noted that 16 meshblocks are not held in digitised form. These meshblocks are detailed in the Appendix.
+
+```{r comparing meshblock changes over election years, cache=TRUE}
+# Creating a custom dataframe to compare meshblock changes over election years
+mbcomp <- merge(yearlymbs[, c(1, 3, 5)], mbelecpop2020[, c(1, 6, 9, 10, 11)])
+mbcomp <- merge(mbcomp, mbelecs2014[, c(1, 3, 5, 6, 7)])
+mbcomp[1,]
+```
+
+The meshblocks over the election years 2014 and 2020, their associated general and M&amacr;ori electorate in each of the two election years, their total surface area and their total land surface area were combined into a single dataframe for easy comparisons. Above is the first meshblock in this dataframe, displayed as an example.
+
+## Election Results
+
+A good way of measuring vote effects election-to-election regardless of electorate size is to use percentage votes for each party in each electorate. There is a dataset for 2017.
+
+```{r election results, cache=TRUE}
+# Party percentage votes 2017
+partperc2017 <- read.csv("percentage-votes-for-registered-parties_(2017).csv", skip = 2)
+colnames(partperc2017) = c("Electoral District", "ACT NEW ZEALAND Votes",
+                           "ACT NEW ZEALAND Percentage", "GREEN PARTY Votes",
+                           "GREEN PARTY Percentage", "LABOUR PARTY Votes", 
+                           "LABOUR PARTY Percentage", "NATIONAL PARTY Votes", 
+                           "NATIONAL PARTY Percentage", "NEW ZEALAND FIRST PARTY Votes", 
+                           "NEW ZEALAND FIRST PARTY Percentage", "OTHER Votes", 
+                           "OTHER Percentage", "TOTAL Votes")
+# Converting electorate names to ASCII
+partperc2017$`Electoral District` <- as.character(partperc2017$`Electoral District`)
+partperc2017[20, 1] = "Kaikoura"
+partperc2017[23, 1] = "Mangere"
+partperc2017[36, 1] = "Ohariu"
+partperc2017[37, 1] = "Otaki"
+partperc2017[43, 1] = "Rangitikei"
+partperc2017[49, 1] = "Tamaki"
+partperc2017[51, 1] = "Taupo"
+partperc2017[53, 1] = "Te Atatu"
+partperc2017[67, 1] = "Ikaroa-Rawhiti"
+partperc2017[68, 1] = "Tamaki Makaurau"
+partperc2017[69, 1] = "Te Tai Hauauru"
+partperc2017[73, 1] = "Maori Electorate Totals"
+
+head(partperc2017)[1:3]
+```
+
+The columns for each dataset do not have the same name, therefore the columns are renamed equivalently to eliminate confusion. It should be noted that the OTHER category for the 2017 general election includes 11 other registered parties, while, as of 12 June 2020, the OTHER category for the 2020 general election will include 9 other registered parties. See \hyperref[sec:Appendix Section C]{\underline{Section C of the Appendix}} for more detail.
+
+# Analytical Plan
+
+The method for quantifying the electoral boundary changes is by using the meshblock land area as a metric, and assuming that the voter population is uniformly distributed across the land area. Land area is used instead of overall area as it is the more accurate metric for gauging the New Zealand population - it is possible, but extremely unlikely that a New Zealand voter will be living on a non-land surface e.g. an offshore oil-mining platform. Unfortunately, because a uniform distribution of the population is assumed, including the non-land area implies that there is a significant population inhabiting non-land meshblocks, when in truth non-land inhabitants are very sparsely located. Therefore, voters living in offshore locations are excluded from this analysis (which do not have compiled meshblock data anyway - see \hyperref[sec:Appendix Section D]{\underline{Section D of the Appendix}} for more information.
+
+The \href{https://elections.nz/democracy-in-nz/historical-events/2014-general-election/voter-turnout-statistics-for-the-2014-general-election/}{\color{blue}{2014 election}} saw 76.77% of the election-enrolled population voted, while in the \href{https://elections.nz/democracy-in-nz/historical-events/2017-general-election/voter-turnout-statistics-for-the-2017-general-election/}{\color{blue}{2017 election}} 79.01% of the population voted (an increase of 2.24%). Supposing this trend continues linearly, the 2020 election would see 81.25% of the population voting.
+
+Each electorate is analysed one at a time. The 2014 electorate each meshblock in the 2020 electorate belongs to is obtained. For each of these 2014 electorates, the total land area of these meshblocks is summed up and calculated as a proportion of the 2020 electorate population. These proportions are multiplied by the total population of the 2020 electorate to get the number of people in the 2020 electorate that belonged to each of the 2014 electorates the meshblocks were classified under. Each of these values is then multiplied by 0.8125 to represent the voter population. In addition, the 2017 election results for each of the 2014 electorates is obtained.
+
+Using the same percentage votes, the voter population for each 2014 electorate partition is calculated by multiplying the new voter population by the 2017 party vote percentages. These are then totalled for each party, and new party vote percentages for the 2020 electorate are calculated, by taking the total number of voters for each party, dividing it by the total number of voters in the 2020 electorate and multiplying the result by 100. The totals and the percentages of the total voting population within the electorate are added to a master matrix (which is meant to mimic \texttt{partperc2017} but show predicted voting numbers and percentages for the 2020 general election). The process is repeated for every electorate.
+
+The total voters for each party are then summed up and the percentages are calculated using the same method for the general electorates, the Māori electorates and the combined totals. These are shown at the end of the general electorate data (row 66), the end of the Māori electorate data (row 74) and at the very last row (row 75) respectively.
+
+I turned this procedure into an algorithm, as shown below.
+
+```{r the algorithm, cache=TRUE}
+# Electorate lists
+elecs2014 <- partperc2017[, 1]
+elecs2020 <- c("Auckland Central", "Banks Peninsula", "Bay of Plenty", "Botany", 
+               "Christchurch Central", "Christchurch East", "Coromandel", "Dunedin", 
+               "East Coast", "East Coast Bays", "Epsom", "Hamilton East", "Hamilton West", 
+               "Hutt South", "Ilam", "Invercargill", "Kaikoura", "Kaipara ki Mahurangi", 
+               "Kelston", "Mana", "Mangere", "Manurewa", "Maungakiekie", "Mt Albert", 
+               "Mt Roskill", "Napier", "Nelson", "New Lynn", "New Plymouth", 
+               "North Shore", "Northcote", "Northland", "Ohariu", "Otaki", "Pakuranga", 
+               "Palmerston North", "Panmure-Otahuhu", "Papakura", "Port Waikato", 
+               "Rangitata", "Rangitikei", "Remutaka", "Rongotai", "Rotorua", "Selwyn", 
+               "Southland", "Taieri", "Takanini", "Tamaki", "Taranaki-King Country", 
+               "Taupo", "Tauranga", "Te Atatu", "Tukituki", "Upper Harbour", "Waikato", 
+               "Waimakariri", "Wairarapa", "Waitaki", "Wellington Central", 
+               "West Coast-Tasman", "Whanganui", "Whangaparaoa", "Whangarei", "Wigram", 
+               "General Electorate Totals", "Hauraki-Waikato", "Ikaroa-Rawhiti", 
+               "Tamaki Makaurau", "Te Tai Hauauru", "Te Tai Tokerau", "Te Tai Tonga", 
+               "Waiariki", "Maori Electorate Totals", "Combined Totals")
+
+# Setting up the matrix to hold the predicted numbers
+predvotes <- data.frame(matrix(NA, nrow = 75, ncol = 14))
+colnames(predvotes) = colnames(partperc2017)
+predvotes[, 1] <- elecs2020
+
+# Algorithm for General Electorates
+for (i in 1:65) {
+  # Incoming meshblocks
+  incoming <- mbcomp[which(mbcomp$GED2020_V1_00_NAME_ASCII == ge2020[i, 3]), ]
+  uniques <- unique(incoming[, 8])
+  elecindices <- c(0)
+  for (o in 1:length(uniques)) {
+    elecindices[o] <- which(elecs2014 == uniques[o])
+  }
+  parts <- partperc2017[elecindices, ]
+  voter_pop <- c(NA)
+  for (j in 1:nrow(parts)) {
+    sa <- sum(incoming[which(incoming[, 8] == parts[j, 1]), ]$`2020_LAND_AREA_SQ_KM`)
+    voters <- round(ge2020[i, 4] * 0.8125 * sa / ge2020[i, 5])
+    if (j == 1) {
+      voter_pop <- c(voters)
+    } else {
+      voter_pop <- c(voter_pop, voters)
+    }
+  }
+  # Calculating new voter numbers with same percentage votes
+  for (k in 1:nrow(parts)) {
+    total <- 0
+    for (l in c(3, 5, 7, 9, 11, 13)) {
+      parts[k, l - 1] = round(voter_pop[k] * (parts[k, l] / 100))
+      total <- total + parts[k, l - 1]
+    }
+    parts[k, 14] = total
+  }
+  # Setting up the row for the 2020 electorate
+  parts[nrow(parts) + 1, ] = NA
+  # Calculating totals for the 2020 electorate
+  for (m in c(2, 4, 6, 8, 10, 12, 14)) {
+    parts[nrow(parts), m] <- sum(parts[, m], na.rm = TRUE)
+  }
+  # Calculating the new percentage votes for each party
+  for (n in c(3, 5, 7, 9, 11, 13)) {
+    parts[nrow(parts), n] <- 
+      round(parts[nrow(parts), n - 1] / parts[nrow(parts), 14] * 100, 2)
+  }
+  predvotes[i, 2:14] <- parts[nrow(parts), 2:14]
+}
+
+# Algorithm for Maori Electorates
+for (i in 1:7) {
+  # Incoming meshblocks
+  incoming <- mbcomp[which(mbcomp$MED2020_V1_00_NAME_ASCII == maori2020[i, 3]), ]
+  uniques <- unique(incoming[, 9])
+  elecindices <- c(0)
+  for (o in 1:length(uniques)) {
+    elecindices[o] <- which(elecs2014 == uniques[o])
+  }
+  parts <- partperc2017[elecindices, ]
+  voter_pop <- c(NA)
+  for (j in 1:nrow(parts)) {
+    sa <- sum(incoming[which(incoming[, 9] == parts[j, 1]), ]$`2020_LAND_AREA_SQ_KM`)
+    voters <- round(maori2020[i, 4] * 0.8125 * sa / maori2020[i, 5])
+    if (j == 1) {
+      voter_pop <- c(voters)
+    } else {
+      voter_pop <- c(voter_pop, voters)
+    }
+  }
+  # Calculating new voter numbers with same percentage votes
+  for (k in 1:nrow(parts)) {
+    total <- 0
+    for (l in c(3, 5, 7, 9, 11, 13)) {
+      parts[k, l - 1] = round(voter_pop[k] * (parts[k, l] / 100))
+      total <- total + parts[k, l - 1]
+    }
+    parts[k, 14] = total
+  }
+  # Setting up the row for the 2020 electorate
+  parts[nrow(parts) + 1, ] = NA
+  # Calculating totals for the 2020 electorate
+  for (m in c(2, 4, 6, 8, 10, 12, 14)) {
+    parts[nrow(parts), m] <- sum(parts[, m], na.rm = TRUE)
+  }
+  # Calculating the new percentage votes for each party
+  for (n in c(3, 5, 7, 9, 11, 13)) {
+    parts[nrow(parts), n] <- 
+      round(parts[nrow(parts), n - 1] / parts[nrow(parts), 14] * 100, 2)
+  }
+  predvotes[i + 66, 2:14] <- parts[nrow(parts), 2:14]
+}
+
+# Summing the total votes
+for (p in c(14, 2, 4, 6, 8, 10, 12)) {
+  predvotes[66, p] <- sum(predvotes[, p][1:65])
+  predvotes[74, p] <- sum(predvotes[, p][67:73])
+  predvotes[75, p] <- predvotes[66, p] + predvotes[74, p]
+  # Calculating the percentage of the total electorate vote and total country vote
+  if (p != 14) {
+    predvotes[66, p + 1] <- round(predvotes[66, p] / predvotes[66, 14] * 100, 2)
+    predvotes[74, p + 1] <- round(predvotes[74, p] / predvotes[74, 14] * 100, 2)
+    predvotes[75, p + 1] <- round(predvotes[75, p] / predvotes[75, 14] * 100, 2)
+  }
+}
+```
+
+# Results
+
+None of the 2020 electorates that are smaller than their 2014 variants have any changes in party votes that are significant enough to change the winning party in the electorate.
+
+```{r new lynn, cache=TRUE}
+# New Lynn
+partperc2017[31,]
+predvotes[28,]
+```
+
+Of the 2020 electorates that are bigger than their 2014 variants, New Lynn is projected to have a significant enough change in voters' party vote that the National Party manages to amass a majority percentage (from 41.79% to 54.97%), and that the Labour Party drastically decreases in percentage (from 42.68% to 26.65%). The other such electorates did not see change significant enough to change the winning party in those electorates.
+
+```{r results, cache=TRUE}
+# General electorates, Maori electorates and combined results
+partperc2017[c(65, 73, 74),]
+predvotes[c(66, 74, 75),]
+```
+
+The overall percentage party vote changes from 2017 are projected to be: ACT -0.01%, Green -0.17%, Labour +0.62%, National -1.04%, NZ First +0.10%, Other +0.51%. The Labour Party stands to gain the most from the electoral boundary changes, while the National Party stands to lose the most from the changes. This is, however, not a large enough gain or loss to alter the popular party vote. As a result, this analysis predicts that, if the Labour Party wanted to maintain their place as the ruling party, they would need to once again form a coalition government with several other parties to gain the majority of the parliamentary seats. Otherwise, it is predicted that the National Party will win the party vote and need fewer seats to form a coalition government that will win the majority.
+
+Voting population multiplies by a factor of $\frac{3819219}{2591896} = 1.4735$, an increase of almost 50% since the previous election. This is a strange value, as the voting population was expected to linearly increase by about 2% overall, and yet the model projects the voting population to increase by almost 25x that. The 2017 voter numbers seem slightly off, as the total voting population in 2017 does not make sense as ~79% of New Zealand's population (as New Zealand's population is widely considered to be in the range of 4.5-5 million people - only very recently is New Zealand's population estimated to be over 5 million).
+
+# Discussion
+
+This is a relatively simple method for predicting the party votes for the 2020 general election. It is reasonably easy to understand and implement, but lacks some depth. Missing demographic data of voters and electorates (e.g. sex of voters, ethnicity of voters and inhabitants of the electorate) would be helpful as additional information to help understand voting patterns of electorates more.
+
+Using land area as the measurement for quantifying electoral boundary changes is not ideal; population is a better metric. However, population was not published at the electoral and meshblock levels until 2020, so using population has less complete data for comparing between years with electorate boundary changes. If population was a public statistic at the electoral and meshblock levels for election years prior to 2020, it would be a more accurate way to quantify the effect of electorate boundary changes.
+
+The boundary changes have had very little effect. Outside of New Lynn, the electorates that have had large land area changes had predicted 2020 election results that are mostly similar to the 2017 election results. The overall party vote finds that the final percentage votes produce a similar situation to 2017, where the winning government must be a coalition government. However, the public opinion of current Prime Minister Jacinda Ardern is very high, especially given the crises that she and the current government have had to navigate over her tenure (Christchurch mosque shootings, White Island eruption, COVID-19) and the way that they have handled it. Conversely, opinion polling for the National Party hit historic lows post-COVID-19 lockdown, leading to the shifting of leadership roles within the National Party (sacking of Simon Bridges and Paula Bennett in favour of Todd Muller and Nikki Kaye). It is difficult to quantify the effect that these crises have had on projected party votes per electorate without regular opinion polls in every electorate, but anecdotal evidence suggests that the Labour Party will gain a large amount of support, possibly enough to gain a majority control of the parliament seats without needing to form a coalition government, while the National Party will have much lower support than they did in 2017 (or even 2014).
+
+# Appendix
+
+\label{sec:Appendix Section A}
+
+## A. Cleaning the MULTIPOLYGON data
+
+The WKT (well-known text) representation of geometry is very messy in the general electorate and meshblock datasets. Below is an example of how the data in its .csv form is messy.
+
+Suppose Row 1 contains the WKT representation of the meshblock (MULTIPOLYGON) in Column A:
+
+1. One of the coordinate pairs in the MULTIPOLYGON is cut in a random place (it does not have to split the pair into $x$-coordinate and $y$-coordinate)
+2. The first portion of the coordinate pair remains in the cell containing the MULTIPOLYGON
+3. The second portion of the coordinate pair is instead placed into Column A of the next row (Row 2 in this case)
+4. Any remaining coordinate pairs that need to be expressed in the single cell containing the MULTIPOLYGON are expressed in the cells to the right of cell A2
+5. Each such cell contains a single coordinate pair, until all coordinate pairs are listed
+6. To the right of the last coordinate pair for this specific MULTIPOLYGON is the additional information that should be classified under the columns e.g. \texttt{MB2020\_V1\_00}, \texttt{LANDWATER}, \texttt{LANDWATER\_NAME}, \texttt{LAND\_AREA\_SQ\_KM}, \texttt{AREA\_SQ\_KM} and \texttt{SHAPE\_Length}
+
+This messiness peppered the original .csv file. However, after importing the dataset, R appears to read it perfectly in the clean format that it should be.
+
+\label{sec:Appendix Section B}
+
+## B. Detailed changes to electorates for the 2020 general election
+
+\href{https://vote.nz/assets/Boundary-Review/REPORT-OF-THE-REPRESENTATION-COMMISSION-2020.pdf}{\color{blue}{This report}} contains a list of changes made to electorates and their boundaries as a result of the 2018 census. Here is a quick summary of the changes.
+
+The report mentions that there has been one new North Island General electorate created, 30 General and 5 M&amacr;ori electorates have seen adjustments, and the remaining 36 electorates are unchanged.
+
+The executive summary mentions for the North Island General electorates:
+
+\begin{itemize}
+  \item A new electorate has been created to accommodate the growth in the Auckland region. This electorate is named \textbf{Takanini}, with population comprised of portions of 2014 \textbf{Manurewa}, 2014 \textit{Hunua} and 2014 \textbf{Papakura}, and additionally includes the Wattle Downs and Takanini suburbs.
+  \item \textit{Rodney} has been renamed \textbf{Whangaparāoa} and now contains Dairy Flat and Coatesville.
+  \item \textit{Helensville} is renamed \textbf{Kaipara ki Mahurangi}, gains meshblocks from \textbf{Northland}, \textbf{Whangaparāoa} and \textbf{Upper Harbour}, and loses meshblocks from the Waitakere Ranges to \textbf{New Lynn}.
+  \item \textit{Manukau East} has been renamed \textbf{Panmure-Ōtāhuhu}, and a small area around Maungarei/Mount Wellington moves into this electorate.
+  \item Changes have been made to \textbf{Mt Roskill}, \textbf{Maungakiekie}, \textbf{Panmure-Ōtāhuhu} and \textbf{Manurewa} to accommodate the newly-created \textbf{Takanini} electorate.
+  \item \textit{Hunua} is renamed \textbf{Port Waikato}. As a result of a large portion of \textit{Hunua} being allocated to the new \textbf{Takanini} electorate, population from \textbf{Waikato} is added to the newly-renamed \textbf{Port Waikato}.
+  \item As a result of the \textbf{Port Waikato} changes, \textbf{Waikato}, \textbf{Coromandel}, \textbf{Hamilton West} and \textbf{Taupō} have had their boundaries adjusted accordingly.
+  \item \textbf{Whangārei} and \textbf{Bay of Plenty} have also had their boundaries adjusted.
+  \item \textit{Rimutaka} has been renamed \textbf{Remutaka}.
+\end{itemize}
+
+The remaining 31 North Island General electorates remain unchanged.
+
+For the South Island General electorates, the executive summary says:
+
+\begin{itemize}
+  \item Brightwater has been moved from \textbf{Nelson} to \textbf{West Coast-Tasman}.
+  \item \textit{Port Hills} has been renamed to \textbf{Banks Peninsula} and the boundaries have been adjusted to include the Banks Peninsula from \textbf{Selwyn}, among other changes.
+  \item The boundaries of \textbf{Ilam}, \textbf{Wigram}, \textbf{Christchurch East} and \textbf{Rangitata} have been adjusted.
+  \item \textit{Clutha-Southland} has been renamed to \textbf{Southland} and it gains the Alexandra and Clyde region from \textbf{Waitaki}.
+  \item \textit{Dunedin North} has been renamed to \textbf{Dunedin}.
+  \item \textit{Dunedin South} has been renamed to \textbf{Taieri}, and the Otago Peninsula has been moved from \textbf{Taieri} to  \textbf{Dunedin}. To compensate, South Otago has been moved from newly-renamed \textbf{Southland} to newly-renamed \textbf{Taieri}.
+  \item Winton and The Catlins have been added to the newly-renamed \textbf{Southland}.
+  \item \textbf{Invercargill} expands into the western Southland area, including Tuatapere.
+\end{itemize}
+
+Three South Island General electorates are untouched: \textbf{Christchurch Central}, \textbf{Kaikōura} and \textbf{Waimakariri}.
+
+Lastly, the M&amacr;ori electorates have had the following changes made:
+
+\begin{itemize}
+  \item \textbf{Tāmaki Makaurau} has gained an area around Te Atatū South from \textbf{Te Tai Tokerau}, an area east of Manurewa, and Waiheke Island from \textbf{Hauraki-Waikato}.
+  \item A minor adjustment between \textbf{Ikaroa-Rāwhiti} and \textbf{Te Tai Tonga} has been made in Naenae.
+\end{itemize}
+
+Two M&amacr;ori electorates have been left alone: \textbf{Te Tai Hauāuru} and \textbf{Waiariki}.
+
+The final electorates can be viewed through interactive mapping at \href{https://www.vote.nz}{\color{blue}{this site}}.
+
+\label{sec:Appendix Section C}
+
+## C. OTHER Registered Parties
+
+The registered parties classified as "OTHER" in the 2017 general election were:
+
+\begin{itemize}
+  \item The Opportunities Party
+  \item Māori Party
+  \item Aotearoa Legalise Cannabis Party
+  \item Conservative Party of New Zealand
+  \item Mana Movement
+  \item Ban 1080 Party
+  \item New Zealand People's Party
+  \item United Future New Zealand
+  \item New Zealand Outdoors Party
+  \item New Zealand Democratic Party for Social Credit
+  \item Internet Party
+\end{itemize}
+
+The currently-registered parties classified as "OTHER" for the 2020 general election are:
+
+\begin{itemize}
+  \item The Opportunities Party
+  \item Māori Party
+  \item Aotearoa Legalise Cannabis Party
+  \item New Conservative (renamed from Conservative Party of New Zealand)
+  \item Mana Movement
+  \item New Zealand Outdoors Party
+  \item New Zealand Social Credit Party (renamed from New Zealand Democratic Party for Social Credit)
+  \item Sustainable New Zealand Party
+  \item Vision NZ
+\end{itemize}
+
+\label{sec:Appendix Section D}
+
+## D. Meshblocks that are not included
+
+For the 2020 meshblock data, there are 16 meshblocks that are not held in digitised form. The following list contains these meshblocks (meshblock code, Statistical Area 2 name):
+
+\begin{itemize}
+  \item 0016901, Oceanic Kermadec Islands
+  \item 0016902, Kermadec Islands
+  \item 1588000, Oceanic Oil Rig Taranaki
+  \item 3166401, Oceanic Campbell Island
+  \item 3166402, Campbell Island
+  \item 3166600, Oceanic Oil Rig Southland
+  \item 3166710, Oceanic Auckland Islands
+  \item 3166711, Auckland Islands
+  \item 3195000, Ross Dependency
+  \item 3196001, New Zealand Economic Zone
+  \item 3196002, Oceanic Bounty Islands
+  \item 3196003, Bounty Islands
+  \item 3196004, Oceanic Snares Islands
+  \item 3196005, Snares Island
+  \item 3196006, Oceanic Antipodes Islands
+  \item 3196007, Antipodes Islands
+\end{itemize}
